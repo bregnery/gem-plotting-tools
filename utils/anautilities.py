@@ -442,6 +442,62 @@ def filePathExists(searchPath, subPath=None, debug=False):
             print "Found %s"%s(testPath)
         return True
 
+#========================================================================================
+# Find Inflection Point /////////////////////////////////////////////////////////////////
+#----------------------------------------------------------------------------------------
+# Author(s): Brendan Regnery, Brian Dorney, Jared Sturdy ////////////////////////////////
+#----------------------------------------------------------------------------------------
+
+def findInflectionPts(graph):
+    '''
+    Find and return the "knee", inflection point of the SBit Rate scan
+    graph should be a TGraph or TH1F of the SBit Rate scan for 1 vfat 
+    '''
+
+
+    import ROOT as root
+    import numpy as np
+    from itertools import groupby
+
+    # make TH1F into TGraph
+    if type(graph) == root.TH1F :
+        graph = root.TGraph(graph)
+
+    # make arrays out of the x and y components
+    x = graph.GetX()
+    y = graph.GetY()
+    x = np.array(x, dtype=float)
+    y = np.array(y, dtype=float)
+
+    # Calculate the gradient of y as a function of x
+    # Documentation here: https://docs.scipy.org/doc/numpy/reference/generated/numpy.gradient.html
+    grad = np.gradient(y, x)
+
+    # Split the array when the slope changes sign
+    posGrad = [list(g) for k, g in groupby(grad, lambda x: x > 0) if k]
+    negGrad = [list(g) for k, g in groupby(grad, lambda x: x < 0) if k]
+    #print "Gradient: ", grad
+   
+    # Sum the split arrays and find the most negative sum
+    negSum = []
+    bigNegSum = 0
+    for iNegArr in range(0, len(negGrad) ) :
+        tmpNegSum = sum(negGrad[iNegArr] )
+        negSum.append(tmpNegSum)
+        if tmpNegSum < bigNegSum :
+            bigNegSum = tmpNegSum
+            bigIdx =  iNegArr
+
+    # Get the inflection point
+    # We are defining the inflection point as the point where the most negative gradient sum begins
+    inflxGrad = negGrad[bigIdx][0]
+    print "Inflection Gradient: ", inflxGrad
+    for iGrad in range(0, len(grad) ) :
+        if grad[iGrad] == inflxGrad :
+            inflxIdx = iGrad
+    print "Inflection Point: ", x[inflxIdx], y[inflxIdx]
+    return [x[inflxIdx], y[inflxIdx] ]
+
 def first_index_gt(data_list, value):
     """
     http://code.activestate.com/recipes/578071-fast-indexing-functions-greater-than-less-than-equ/
@@ -1568,3 +1624,330 @@ def saveSummaryByiEta(dictSummary, name='Summary', trimPt=None, drawOpt="colz"):
     canv.SaveAs(name)
 
     return
+
+def sbitRateAnalysis(chamber_config, rateTree, cutOffRate=0.0, debug=False, outfilename='SBitRatePlots.root', scandate='noscandate'):
+    """
+    Analyzes a scan taken with sbitRateScanAllLinks(...) from gempython.vfatqc.utils.scanUtils
+    
+    Returns a tuple (boolean,dictionary) where the dictionary returned is:
+
+        dict_dacValsBelowCutOff[dacName][ohKey][vfat] = value
+
+    Where ohKey is a tuple of (shelf,slot,link) providing the mapping for uTCA shelf -> slot -> link mapping.
+    Here dacName are the values stored in the "nameX" TBranch of the input TTree.
+    And value is the value of dacName for which the SBIT rate is below the cutOffRate.
+
+    The boolean returned states whether the channelOR (false) or perchannel (true) analysis was performed
+
+    Additional input parameters are:
+
+        chamber_config  - chamber_config dictionary
+        debug           - Prints additional debugging information
+        rateTree        - instance of gemSbitRateTreeStructure
+        cutOffRate      - Theshold rate (in Hz) described above
+        outfilename     - Name of output TFile to be created
+        scandate        - Either a string 'noscandate' or an a datetime object formated as YYYY.MM.DD.hh.mm, e.g
+                          returned from "datetime.datetime.now().strftime("%Y.%m.%d.%H.%M")"
+    """
+
+    # Check $ENV
+    from gempython.utils.wrappers import envCheck
+    envCheck("DATA_PATH")
+    envCheck("ELOG_PATH")
+
+    import os
+    dataPath = os.getenv("DATA_PATH")
+    elogPath = os.getenv("ELOG_PATH") 
+
+    # Set default histogram behavior
+    import ROOT as r
+    r.TH1.SetDefaultSumw2(False)
+    r.gROOT.SetBatch(True)
+    r.gStyle.SetOptStat(1111111)
+
+    print("Loading info from input TTree")
+
+    # Get the data
+    import root_numpy as rp
+    import numpy as np
+    list_bNames = ['dacValX','link','nameX','rate','shelf','slot','vfatCH','vfatN']
+
+    vfatArray = rp.tree2array(tree=rateTree,branches=list_bNames)
+    dacNameArray = np.unique(vfatArray['nameX'])
+
+    # channelOR or perchannel?
+    vfatChannels = np.unique(vfatArray['vfatCH'])
+    if len(vfatChannels) == 1:
+        perchannel = False
+    else:
+        perchannel = True
+        pass
+
+    # make the crateMap
+    list_bNames.remove('dacValX')
+    list_bNames.remove('nameX')
+    list_bNames.remove('rate')
+    list_bNames.remove('vfatCH')
+    list_bNames.remove('vfatN')
+    crateMap = np.unique(rp.tree2array(tree=rateTree,branches=list_bNames))
+
+    # get nonzero VFATs
+    dict_nonzeroVFATs = {}
+    for entry in crateMap:
+        ohKey = (entry['shelf'],entry['slot'],entry['link'])
+        arrayMask = np.logical_and(vfatArray['rate'] > 0, vfatArray['link'] == entry['link'])
+        arrayMask = np.logical_and(arrayMask, vfatArray['slot'] == entry['slot'])
+        arrayMask = np.logical_and(arrayMask, vfatArray['shelf'] == entry['shelf'])
+        dict_nonzeroVFATs[ohKey] = np.unique(vfatArray[arrayMask]['vfatN'])
+
+    if debug:
+        printYellow("crateMap:\n{0}".format(crateMap))
+        printYellow("dacNameArray:\n{0}".format(dacNameArray))
+
+    # make output directories
+    from gempython.utils.wrappers import runCommand
+    for entry in crateMap:
+        ohKey = (entry['shelf'],entry['slot'],entry['link'])
+        if scandate == 'noscandate':
+            runCommand(["mkdir", "-p", "{0}/{1}".format(elogPath,chamber_config[ohKey])])
+            runCommand(["chmod", "g+rw", "{0}/{1}".format(elogPath,chamber_config[ohKey])])
+        else:
+            if perchannel:
+                strDirName = getDirByAnaType("sbitRatech", chamber_config[ohKey])
+            else:
+                strDirName = getDirByAnaType("sbitRateor", chamber_config[ohKey])
+                pass
+            runCommand(["mkdir", "-p", "{0}/{1}".format(strDirName,scandate)])
+            runCommand(["chmod", "g+rw", "{0}/{1}".format(strDirName,scandate)])
+            runCommand(["unlink", "{0}/current".format(strDirName)])
+            runCommand(["ln","-s","{0}/{1}".format(strDirName,scandate),"{0}/current".format(strDirName)])
+            pass
+        pass
+
+    # make nested dictionaries
+    from gempython.utils.nesteddict import nesteddict as ndict
+    dict_Rate1DVsDACNameX = ndict() #[dacName][ohKey][vfat] = TGraphErrors
+    dict_vfatCHVsDACNameX_Rate2D = ndict() #[dacName][ohKey][vfat] = TGraph2D
+    
+    # initialize a TGraphErrors and a TF1 for each vfat
+    for idx in range(len(dacNameArray)):
+        dacName = np.asscalar(dacNameArray[idx])
+        for entry in crateMap:
+            ohKey = (entry['shelf'],entry['slot'],entry['link'])
+            for vfat in range(0,25): #24th VFAT represents "overall case"
+                # 1D Distributions
+                dict_Rate1DVsDACNameX[dacName][ohKey][vfat] = r.TGraphErrors()
+                dict_Rate1DVsDACNameX[dacName][ohKey][vfat].SetName("g1D_rate_vs_{0}_vfat{1}".format(dacName.replace("_","-"),vfat))
+                dict_Rate1DVsDACNameX[dacName][ohKey][vfat].GetXaxis().SetTitle(dacName)
+                dict_Rate1DVsDACNameX[dacName][ohKey][vfat].GetYaxis().SetRangeUser(1e-1,1e8)
+                dict_Rate1DVsDACNameX[dacName][ohKey][vfat].GetYaxis().SetTitle("SBIT Rate #left(Hz#right)")
+                dict_Rate1DVsDACNameX[dacName][ohKey][vfat].SetMarkerStyle(23)
+                dict_Rate1DVsDACNameX[dacName][ohKey][vfat].SetMarkerSize(0.8)
+                dict_Rate1DVsDACNameX[dacName][ohKey][vfat].SetLineWidth(2)
+
+                # 2D Distributions
+                dict_vfatCHVsDACNameX_Rate2D[dacName][ohKey][vfat] = r.TGraph2D()
+                dict_vfatCHVsDACNameX_Rate2D[dacName][ohKey][vfat].SetName("g2D_vfatCH_vs_{0}_rate_vfat{1}".format(dacName.replace("_","-"),vfat))
+                dict_vfatCHVsDACNameX_Rate2D[dacName][ohKey][vfat].GetXaxis().SetTitle(dacName)
+                dict_vfatCHVsDACNameX_Rate2D[dacName][ohKey][vfat].GetYaxis().SetTitle("VFAT Channel")
+                dict_vfatCHVsDACNameX_Rate2D[dacName][ohKey][vfat].GetZaxis().SetTitle("SBIT Rate #left(Hz#right)")
+                pass
+            pass
+        pass
+
+    # create output TFiles
+    outputFiles = {}         
+    for entry in crateMap:
+        ohKey = (entry['shelf'],entry['slot'],entry['link'])
+        if scandate == 'noscandate':
+            outputFiles[ohKey] = r.TFile(elogPath+"/"+chamber_config[ohKey]+"/"+outfilename,'recreate')
+        else:    
+            if perchannel:
+                strDirName = getDirByAnaType("sbitRatech", chamber_config[ohKey])
+            else:
+                strDirName = getDirByAnaType("sbitRateor", chamber_config[ohKey])
+                pass
+            outputFiles[ohKey] = r.TFile(strDirName+scandate+"/"+outfilename,'recreate')
+            pass
+        pass
+
+    # Loop over events the tree and fill plots
+    print("Looping over stored events in rateTree")
+    from math import sqrt 
+    for event in rateTree:
+        ohKey = (event.shelf,event.slot,event.link)
+        vfat = event.vfatN
+
+        if vfat not in dict_nonzeroVFATs[ohKey]:
+            continue
+
+        #Get the DAC Name in question
+        dacName = str(event.nameX.data())
+
+        try:
+            if event.vfatCH == 128:
+                dict_Rate1DVsDACNameX[dacName][ohKey][vfat].SetPoint(
+                        dict_Rate1DVsDACNameX[dacName][ohKey][vfat].GetN(),
+                        event.dacValX,
+                        event.rate)
+                dict_Rate1DVsDACNameX[dacName][ohKey][vfat].SetPointError(
+                        dict_Rate1DVsDACNameX[dacName][ohKey][vfat].GetN()-1,
+                        0,
+                        sqrt(event.rate))
+            else:
+                dict_vfatCHVsDACNameX_Rate2D[dacName][ohKey][vfat].SetPoint(
+                        dict_vfatCHVsDACNameX_Rate2D[dacName][ohKey][vfat].GetN(),
+                        event.dacValX,
+                        event.vfatCH,
+                        event.rate)
+        except AttributeError:
+            print("Point Number: ", counter)
+            print("event.vfatCH = ", event.vfatCH)
+            print("dacName = ", dacName)
+            print("ohKey = ", ohKey)
+            print("vfat = ", vfat)
+            print("dict_Rate1DVsDACNameX[dacName].keys() = ", dict_Rate1DVsDACNameX.keys() )
+            print("dict_Rate1DVsDACNameX[dacName][ohKey].keys() = ", dict_Rate1DVsDACNameX[dacName][ohKey].keys() )
+            print("dict_Rate1DVsDACNameX[dacName][ohKey][vfat] = ", dict_Rate1DVsDACNameX[dacName][ohKey][vfat] )
+            print("dict_Rate1DVsDACNameX = ", dict_Rate1DVsDACNameX)
+            exit()
+
+            pass
+        pass
+
+    print("Determine when SBIT rate falls below {0} Hz and writing output data".format(cutOffRate))
+    #from array import array
+    dict_dacValsBelowCutOff = ndict()
+    
+    # make a named dictionary to store inflection pts
+    dict_dacInflectPts = ndict()
+
+    print("Enter Crate Loop")
+
+    for entry in crateMap:
+        ohKey = (entry['shelf'],entry['slot'],entry['link'])
+        # Per VFAT Poosition
+        for vfat in range(0,24):
+            thisVFATDir = outputFiles[ohKey].mkdir("VFAT{0}".format(vfat))
+
+            for idx in range(len(dacNameArray)):
+                dacName = np.asscalar(dacNameArray[idx])
+
+                thisDACDir = thisVFATDir.mkdir(dacName)
+                thisDACDir.cd()
+
+                #========================================================================
+                # Get Inflection Points /////////////////////////////////////////////////
+                #========================================================================
+
+		# Pseudocode
+		# make some container to store inflection Pts (e.g. nested dict like dict_dacValsBelowCutOff)
+		# the channel or case is easy:
+		# if perchannel:
+			# Case working with 2D distributions
+			# make 2D histogram from dict_vfatCHVsDACNameX_Rate2D[dacName][ohKey][vfat] with TGraph2D::GetHistogram() method
+			# Make a temporary 1D histogram to add all the projections too
+			# Then for channel bins in this tmp 2D histogram loop over them
+				# Make a projection using TH2D::ProjectionX or Y depending on which axis is vfatCH
+				# Add this projection to 1 tmp1D histogram using TH1F::Add()
+		# else:
+                print("Find Inflection Point")
+                print "VFAT #: ", vfat
+                if perchannel == False :
+	            #dict_InflectPt[dacName][ohKey][vfat] = findInflectionPts(dict_Rate1DVsDACNameX[dacName][ohKey][vfat])
+	            dict_dacInflectPts[dacName][ohKey][vfat] = findInflectionPts(dict_Rate1DVsDACNameX[dacName][ohKey][vfat])
+
+
+                dict_dacValsBelowCutOff[dacName][ohKey][vfat] = 255 #default to max
+                for point in range(0,dict_Rate1DVsDACNameX[dacName][ohKey][vfat].GetN()):
+                    dacValX = r.Double()
+                    rateVal = r.Double()
+                    dict_Rate1DVsDACNameX[dacName][ohKey][vfat].GetPoint(point,dacValX,rateVal)
+                    if rateVal <= cutOffRate:
+                        dict_dacValsBelowCutOff[dacName][ohKey][vfat] = int(dacValX)
+                        break
+                    pass
+
+                if perchannel:
+                    dict_vfatCHVsDACNameX_Rate2D[dacName][ohKey][vfat].Write()
+                else:
+                    dict_Rate1DVsDACNameX[dacName][ohKey][vfat].Write()
+                    pass
+                pass
+            pass
+        for idx in range(len(dacNameArray)):
+            dacName = np.asscalar(dacNameArray[idx])
+            if perchannel:
+                canv_Summary2D = make3x8Canvas("canv_Summary_Rate2D_vs_{0}".format(dacName),dict_vfatCHVsDACNameX_Rate2D[dacName][ohKey],"TRI1")
+                for vfat in range(1,25):
+                    canv_Summary2D.cd(vfat).SetLogz()
+            else:
+                canv_Summary1D = make3x8Canvas("canv_Summary_Rate1D_vs_{0}".format(dacName),dict_Rate1DVsDACNameX[dacName][ohKey],"APE1")
+                for vfat in range(1,25) :
+                    canv_Summary1D.cd(vfat).SetLogy()
+
+                #====================================================================================
+                # Make Graphs ///////////////////////////////////////////////////////////////////////
+                #====================================================================================
+            
+                import matplotlib
+                matplotlib.use('Agg') #prevents opening displays (fast), must use before pyplot
+                import matplotlib.pyplot as plt
+            
+                # Plot graphs so we can see the Inflection point
+                vfatN = list(range(24)) # 24 vfats 0-23
+                fig, axs = plt.subplots(3, 8, figsize = (40, 30) )
+                rowN, colN = 0,0
+                for vfat in range(len(vfatN) ) :
+                    # get the correct rows and columns
+                    if colN == 8: rowN += 1
+                    if colN == 8: colN = 0
+            
+                    # make TH1F into TGraph
+                    graph = dict_Rate1DVsDACNameX[dacName][ohKey][vfat] 
+                    if type(graph) == r.TH1F :
+                        graph = r.TGraph(graph)
+
+                    # plot each curve
+                    x = graph.GetX()
+                    x = np.array(x)
+                    y = graph.GetY()
+                    y = np.array(y)
+                    axs[rowN, colN].plot(x, y )
+                    axs[rowN, colN].plot([dict_dacInflectPts[dacName][ohKey][vfat][0], dict_dacInflectPts[dacName][ohKey][vfat][0] ], [1, np.amax(y) + 10.], '-.r', lw=3)
+                    axs[rowN, colN].set_title('VFAT ' + str(vfat) )
+                    axs[rowN, colN].set_yscale("log")
+
+                    colN += 1
+
+                # make the figure pretty
+                fig.tight_layout(rect=[0.05, 0.03, 0.97, 0.95]) # makes space between plots
+                fig.suptitle('Inflection Point Study', fontsize=32)
+                fig.text(0.5, 0.02, 'ARM DAC Value', ha='center', fontsize=28)
+                fig.text(0.02, 0.5, 'Number', va='center', rotation='vertical', fontsize=28)
+                
+                # save the figure
+                fig.savefig('InflectionPointStudy.png')
+                fig.savefig('InflectionPointStudy.pdf')
+  
+      
+
+            if scandate == 'noscandate':
+                if perchannel:
+                    canv_Summary2D.SaveAs("{0}/{1}/{2}_{1}.png".format(elogPath,chamber_config[ohKey],canv_Summary2D.GetName()))
+                else:
+                    canv_Summary1D.SaveAs("{0}/{1}/{2}_{1}.png".format(elogPath,chamber_config[ohKey],canv_Summary1D.GetName()))
+            else:
+                if perchannel:
+                    strDirName = getDirByAnaType("sbitRatech", chamber_config[ohKey])
+                    canv_Summary2D.SaveAs("{0}/{1}/{2}.png".format(strDirName,scandate,canv_Summary2D.GetName()))
+                else:
+                    strDirName = getDirByAnaType("sbitRateor", chamber_config[ohKey])
+                    canv_Summary1D.SaveAs("{0}/{1}/{2}.png".format(strDirName,scandate,canv_Summary1D.GetName()))
+                    pass
+                pass
+            pass
+        outputFiles[ohKey].Close()
+        pass
+
+    return (perchannel, dict_dacValsBelowCutOff)
