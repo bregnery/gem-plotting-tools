@@ -1873,6 +1873,8 @@ def sbitRateAnalysis(chamber_config, rateTree, cutOffRate=0.0, debug=False, outf
                 # Get Inflection Points /////////////////////////////////////////////////
                 #========================================================================
 
+                print("Find Inflection Point")
+                print "VFAT #: ", vfat
 		# Pseudocode
 		# make some container to store inflection Pts (e.g. nested dict like dict_dacValsBelowCutOff)
 		# the channel or case is easy:
@@ -1883,11 +1885,8 @@ def sbitRateAnalysis(chamber_config, rateTree, cutOffRate=0.0, debug=False, outf
 			# Then for channel bins in this tmp 2D histogram loop over them
 				# Make a projection using TH2D::ProjectionX or Y depending on which axis is vfatCH
 				# Add this projection to 1 tmp1D histogram using TH1F::Add()
-		# else:
-                print("Find Inflection Point")
-                print "VFAT #: ", vfat
+
                 if perchannel == False :
-	            #dict_InflectPt[dacName][ohKey][vfat] = findInflectionPts(dict_Rate1DVsDACNameX[dacName][ohKey][vfat])
 	            dict_dacInflectPts[dacName][ohKey][vfat] = findInflectionPts(dict_Rate1DVsDACNameX[dacName][ohKey][vfat])
 
 
@@ -1908,6 +1907,11 @@ def sbitRateAnalysis(chamber_config, rateTree, cutOffRate=0.0, debug=False, outf
                     pass
                 pass
             pass
+
+        #==========================================================================================
+        # Make Graphs /////////////////////////////////////////////////////////////////////////////
+        #==========================================================================================
+           
         for idx in range(len(dacNameArray)):
             dacName = np.asscalar(dacNameArray[idx])
             if perchannel:
@@ -1915,9 +1919,29 @@ def sbitRateAnalysis(chamber_config, rateTree, cutOffRate=0.0, debug=False, outf
                 for vfat in range(1,25):
                     canv_Summary2D.cd(vfat).SetLogz()
             else:
-                canv_Summary1D = make3x8Canvas("canv_Summary_Rate1D_vs_{0}".format(dacName),dict_Rate1DVsDACNameX[dacName][ohKey],"APE1")
-                for vfat in range(1,25) :
-                    canv_Summary1D.cd(vfat).SetLogy()
+                canv_Summary1D = make3x8Canvas("canv_Summary_Rate1D_vs_{0}".format(dacName),dict_Rate1DVsDACNameX[dacName][ohKey],"APE1" )
+                #for vfat in range(1,25):
+                for vfat in range(0,24):
+                    canv_Summary1D.cd(vfat + 1).SetLogy()
+
+                    # make TH1F into TGraph
+                    graph = dict_Rate1DVsDACNameX[dacName][ohKey][vfat] 
+                    if type(graph) == r.TH1F :
+                        graph = r.TGraph(graph)
+
+                    # get maximum y value
+                    y = graph.GetY()
+                    y = np.array(y)
+                    ymax = np.amax(y)
+
+                    # Draw a line on the graphs
+                    canv_Summary1D.cd(vfat + 1)
+                    print "Inflect x value: ", dict_dacInflectPts[dacName][ohKey][vfat][0]
+                    kneeLine = r.TLine(dict_dacInflectPts[dacName][ohKey][vfat][0], 1.0, dict_dacInflectPts[dacName][ohKey][vfat][0], ymax)
+                    kneeLine.SetLineColor(2)
+                    #kneeLine.Draw()
+                    #kneeLine.DrawLine(dict_dacInflectPts[dacName][ohKey][vfat][0], 1, dict_dacInflectPts[dacName][ohKey][vfat][0], ymax)
+                    kneeLine.DrawLineNDC(dict_dacInflectPts[dacName][ohKey][vfat][0], 1, dict_dacInflectPts[dacName][ohKey][vfat][0], ymax)
 
                 #====================================================================================
                 # Make Graphs ///////////////////////////////////////////////////////////////////////
@@ -1963,7 +1987,6 @@ def sbitRateAnalysis(chamber_config, rateTree, cutOffRate=0.0, debug=False, outf
                 fig.savefig('InflectionPointStudy.png')
                 fig.savefig('InflectionPointStudy.pdf')
   
-      
 
             if scandate == 'noscandate':
                 if perchannel:
