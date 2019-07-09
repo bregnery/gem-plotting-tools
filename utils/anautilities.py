@@ -476,7 +476,6 @@ def findInflectionPts(graph):
     # Split the array when the slope changes sign
     posGrad = [list(g) for k, g in groupby(grad, lambda x: x > 0) if k]
     negGrad = [list(g) for k, g in groupby(grad, lambda x: x < 0) if k]
-    #print "Gradient: ", grad
    
     # Sum the split arrays and find the most negative sum
     negSum = []
@@ -491,11 +490,9 @@ def findInflectionPts(graph):
     # Get the inflection point
     # We are defining the inflection point as the point where the most negative gradient sum begins
     inflxGrad = negGrad[bigIdx][0]
-    print "Inflection Gradient: ", inflxGrad
     for iGrad in range(0, len(grad) ) :
         if grad[iGrad] == inflxGrad :
             inflxIdx = iGrad
-    print "Inflection Point: ", x[inflxIdx], y[inflxIdx]
     return [x[inflxIdx], y[inflxIdx] ]
 
 def first_index_gt(data_list, value):
@@ -1662,6 +1659,9 @@ def sbitRateAnalysis(chamber_config, rateTree, cutOffRate=0.0, debug=False, outf
     # Map TPad to correct vfat
     from ..mapping.chamberInfo import chamber_vfatPos2PadIdx
 
+    # Allow for yellow warning color
+    from gempython.utils.gemlogger import printYellow
+
     # Set default histogram behavior
     import ROOT as r
     r.TH1.SetDefaultSumw2(False)
@@ -1843,18 +1843,11 @@ def sbitRateAnalysis(chamber_config, rateTree, cutOffRate=0.0, debug=False, outf
                 # Get Inflection Points /////////////////////////////////////////////////
                 #========================================================================
 
-	        # perchannel case working with 2D distributions
+                # perchannel case is not supported provide warning
 		if perchannel == True :
-		    # make 2D histogram from dict_vfatCHVsDACNameX_Rate2D[dacName][ohKey][vfat] with TGraph2D::GetHistogram() method
-                    tmpHist2D = dict_vfatCHVsDACNameX_Rate2D[dacName][ohKey][vfat].GetHistogram()
+                    printYellow("WARNING: perchannel case is not supported for knee finding!   Skipping knee finding" )
 
-		    # Make a temporary 1D histogram to add all the projections too
-                    tmpHist1D = r.TH1F()
-			# Then for channel bins in this tmp 2D histogram loop over them
-				# Make a projection using TH2D::ProjectionX or Y depending on which axis is vfatCH
-				# Add this projection to 1 tmp1D histogram using TH1F::Add()
-
-                # channel or case
+                # channelor case
                 if perchannel == False :
 	            dict_dacInflectPts[dacName][ohKey][vfat] = findInflectionPts(dict_Rate1DVsDACNameX[dacName][ohKey][vfat])
 
