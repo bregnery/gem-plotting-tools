@@ -1659,6 +1659,9 @@ def sbitRateAnalysis(chamber_config, rateTree, cutOffRate=0.0, debug=False, outf
     dataPath = os.getenv("DATA_PATH")
     elogPath = os.getenv("ELOG_PATH") 
 
+    # Map TPad to correct vfat
+    from ..mapping.chamberInfo import chamber_vfatPos2PadIdx
+
     # Set default histogram behavior
     import ROOT as r
     r.TH1.SetDefaultSumw2(False)
@@ -1840,19 +1843,18 @@ def sbitRateAnalysis(chamber_config, rateTree, cutOffRate=0.0, debug=False, outf
                 # Get Inflection Points /////////////////////////////////////////////////
                 #========================================================================
 
-                print("Find Inflection Point")
-                print "VFAT #: ", vfat
-		# Pseudocode
-		# make some container to store inflection Pts (e.g. nested dict like dict_dacValsBelowCutOff)
-		# the channel or case is easy:
-		# if perchannel:
-			# Case working with 2D distributions
-			# make 2D histogram from dict_vfatCHVsDACNameX_Rate2D[dacName][ohKey][vfat] with TGraph2D::GetHistogram() method
-			# Make a temporary 1D histogram to add all the projections too
+	        # perchannel case working with 2D distributions
+		if perchannel == True :
+		    # make 2D histogram from dict_vfatCHVsDACNameX_Rate2D[dacName][ohKey][vfat] with TGraph2D::GetHistogram() method
+                    tmpHist2D = dict_vfatCHVsDACNameX_Rate2D[dacName][ohKey][vfat].GetHistogram()
+
+		    # Make a temporary 1D histogram to add all the projections too
+                    tmpHist1D = r.TH1F()
 			# Then for channel bins in this tmp 2D histogram loop over them
 				# Make a projection using TH2D::ProjectionX or Y depending on which axis is vfatCH
 				# Add this projection to 1 tmp1D histogram using TH1F::Add()
 
+                # channel or case
                 if perchannel == False :
 	            dict_dacInflectPts[dacName][ohKey][vfat] = findInflectionPts(dict_Rate1DVsDACNameX[dacName][ohKey][vfat])
 
@@ -1887,7 +1889,8 @@ def sbitRateAnalysis(chamber_config, rateTree, cutOffRate=0.0, debug=False, outf
                     canv_Summary2D.cd(vfat).SetLogz()
             else:
                 canv_Summary1D = make3x8Canvas("canv_Summary_Rate1D_vs_{0}".format(dacName),dict_Rate1DVsDACNameX[dacName][ohKey],"APE1" )
-                #for vfat in range(1,25):
+                # make 24 TLines
+                kneeLine= []
                 for vfat in range(0,24):
                     canv_Summary1D.cd(vfat + 1).SetLogy()
 
@@ -1902,59 +1905,14 @@ def sbitRateAnalysis(chamber_config, rateTree, cutOffRate=0.0, debug=False, outf
                     ymax = np.amax(y)
 
                     # Draw a line on the graphs
-                    canv_Summary1D.cd(vfat + 1)
-                    print "Inflect x value: ", dict_dacInflectPts[dacName][ohKey][vfat][0]
-                    kneeLine = r.TLine(dict_dacInflectPts[dacName][ohKey][vfat][0], 1.0, dict_dacInflectPts[dacName][ohKey][vfat][0], ymax)
-                    kneeLine.SetLineColor(2)
-                    #kneeLine.Draw()
-                    #kneeLine.DrawLine(dict_dacInflectPts[dacName][ohKey][vfat][0], 1, dict_dacInflectPts[dacName][ohKey][vfat][0], ymax)
-                    kneeLine.DrawLineNDC(dict_dacInflectPts[dacName][ohKey][vfat][0], 1, dict_dacInflectPts[dacName][ohKey][vfat][0], ymax)
+                    kneeLine.append(r.TLine(dict_dacInflectPts[dacName][ohKey][vfat][0], 10.0, dict_dacInflectPts[dacName][ohKey][vfat][0], ymax) )
+                    kneeLine[vfat].SetLineColor(2)
+                    kneeLine[vfat].SetVertical()
+                    canv_Summary1D.cd(chamber_vfatPos2PadIdx[vfat] )
+                    kneeLine[vfat].Draw()
+                canv_Summary1D.Update()
 
-                #====================================================================================
-                # Make Graphs ///////////////////////////////////////////////////////////////////////
-                #====================================================================================
-            
-                import matplotlib
-                matplotlib.use('Agg') #prevents opening displays (fast), must use before pyplot
-                import matplotlib.pyplot as plt
-            
-                # Plot graphs so we can see the Inflection point
-                vfatN = list(range(24)) # 24 vfats 0-23
-                fig, axs = plt.subplots(3, 8, figsize = (40, 30) )
-                rowN, colN = 0,0
-                for vfat in range(len(vfatN) ) :
-                    # get the correct rows and columns
-                    if colN == 8: rowN += 1
-                    if colN == 8: colN = 0
-            
-                    # make TH1F into TGraph
-                    graph = dict_Rate1DVsDACNameX[dacName][ohKey][vfat] 
-                    if type(graph) == r.TH1F :
-                        graph = r.TGraph(graph)
-
-                    # plot each curve
-                    x = graph.GetX()
-                    x = np.array(x)
-                    y = graph.GetY()
-                    y = np.array(y)
-                    axs[rowN, colN].plot(x, y )
-                    axs[rowN, colN].plot([dict_dacInflectPts[dacName][ohKey][vfat][0], dict_dacInflectPts[dacName][ohKey][vfat][0] ], [1, np.amax(y) + 10.], '-.r', lw=3)
-                    axs[rowN, colN].set_title('VFAT ' + str(vfat) )
-                    axs[rowN, colN].set_yscale("log")
-
-                    colN += 1
-
-                # make the figure pretty
-                fig.tight_layout(rect=[0.05, 0.03, 0.97, 0.95]) # makes space between plots
-                fig.suptitle('Inflection Point Study', fontsize=32)
-                fig.text(0.5, 0.02, 'ARM DAC Value', ha='center', fontsize=28)
-                fig.text(0.02, 0.5, 'Number', va='center', rotation='vertical', fontsize=28)
-                
-                # save the figure
-                fig.savefig('InflectionPointStudy.png')
-                fig.savefig('InflectionPointStudy.pdf')
-  
-
+            # Save the graphs
             if scandate == 'noscandate':
                 if perchannel:
                     canv_Summary2D.SaveAs("{0}/{1}/{2}_{1}.png".format(elogPath,chamber_config[ohKey],canv_Summary2D.GetName()))
