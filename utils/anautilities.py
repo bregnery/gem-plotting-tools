@@ -456,6 +456,9 @@ def findInflectionPts(graph):
     import numpy as np
     from itertools import groupby
 
+    # Allow for yellow and red warning colors
+    from gempython.utils.gemlogger import printYellow, printRed
+
     # make TH1F into TGraph
     if type(graph) == root.TH1F :
         graph = root.TGraph(graph)
@@ -477,6 +480,7 @@ def findInflectionPts(graph):
     # Sum the split arrays and find the most negative sum
     negSum = []
     bigNegSum = 0
+    bigIdx = 0
     for iNegArr in range(0, len(negGrad) ) :
         tmpNegSum = sum(negGrad[iNegArr] )
         negSum.append(tmpNegSum)
@@ -486,15 +490,24 @@ def findInflectionPts(graph):
 
     # Get the inflection point
     # We are defining the inflection point as the point where the most negative gradient sum begins
-    inflxGrad = negGrad[bigIdx][0]
-    try: 
-        inflxIdx = np.where(grad == inflxGrad) #return the index at the specified value
-    except ValueError:
-        print("Warning: the inflection point gradient (inflxGrad) value {:f} was not found in the gradient list".format(inflxGrad))
     try:
+        inflxGrad = negGrad[bigIdx][0]
+        inflxIdx = np.where(grad == inflxGrad) #return the index at the specified value
         inflxPnt = (x[inflxIdx], y[inflxIdx] )
+    # Error handling for problematic VFATs
+    except IndexError:
+        if bigIdx == 0:
+            printYellow("Warning: No values with negative slope, so no inflection point! Assigning 0")
+            inflxPnt = (0.0, 0.0)
+        else:
+            printYellow("Warning: There is no negative gradient value at the index (bigIdx) value {:f}, Assigning 0".format(bigIdx) )
+            inflxPnt = (0.0, 0.0)
+    except ValueError:
+        printYellow("Warning: the inflection point gradient (inflxGrad) value {:f} was not found in the gradient list. Assigning 0".format(inflxGrad) )
+        inflxPnt = (0.0, 0.0)
     except NameError:
-        print("Error: No Inflection Point was not found")
+        printYellow("Warning: The inflection point was not found (unqualified name). Assigning 0")
+        inflxPnt = (0.0, 0.0)
 
     return inflxPnt
 
