@@ -1169,6 +1169,7 @@ def sbitRateAnalysis(chamber_config, rateTree, cutOffRate=0.0, debug=False, outf
 
     # Map TPad to correct vfat
     from ..mapping.chamberInfo import chamber_vfatPos2PadIdx
+    from tabulate import tabulate
 
     from gempython.gemplotting.utils.anautilities import findInflectionPts
     from gempython.gemplotting.utils.anautilities import make3x8Canvas
@@ -1341,6 +1342,7 @@ def sbitRateAnalysis(chamber_config, rateTree, cutOffRate=0.0, debug=False, outf
 
     # make a named dictionary to store inflection pts
     dict_dacInflectPts = ndict()
+    inflectTable = []
 
     for entry in crateMap:
         ohKey = (entry['shelf'],entry['slot'],entry['link'])
@@ -1364,7 +1366,7 @@ def sbitRateAnalysis(chamber_config, rateTree, cutOffRate=0.0, debug=False, outf
                 # channelor case
                 if perchannel == False :
 	            dict_dacInflectPts[dacName][ohKey][vfat] = findInflectionPts(dict_Rate1DVsDACNameX[dacName][ohKey][vfat])
-
+                    inflectTable.append([ohKey, vfat, dict_dacInflectPts[dacName][ohKey][vfat][0][0] ])
 
                 dict_dacValsBelowCutOff[dacName][ohKey][vfat] = 255 #default to max
                 for point in range(0,dict_Rate1DVsDACNameX[dacName][ohKey][vfat].GetN()):
@@ -1383,6 +1385,11 @@ def sbitRateAnalysis(chamber_config, rateTree, cutOffRate=0.0, debug=False, outf
                     pass
                 pass
             pass
+
+        # print points in a table
+        print(tabulate(inflectTable, headers = ['Geo Addr', 'VFAT Number', 'ARM DAC Inflection Pt'], tablefmt='orgtbl') )
+        inflectTableFile = file("{0}/{1}/inflectionPointTable.txt".format(elogPath,chamber_config[ohKey],scandate), "w")
+        inflectTableFile.write(tabulate(inflectTable, headers = ['Geo Addr', 'VFAT Number', 'ARM DAC Inflection Pt'], tablefmt='orgtbl') )
 
         # Make Graphs /////////////////////////////////////////////////////////////////////////////
         #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
