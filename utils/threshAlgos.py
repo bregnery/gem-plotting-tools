@@ -1382,6 +1382,7 @@ def sbitRateAnalysis(chamber_config, rateTree, cutOffRate=0.0, debug=False, outf
 
     # make a named dictionary to store inflection pts
     dict_dacInflectPts = ndict()
+    inflectTable = []
 
     for entry in crateMap:
         ohKey = (entry['shelf'],entry['slot'],entry['link'])
