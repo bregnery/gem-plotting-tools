@@ -1387,9 +1387,10 @@ def sbitRateAnalysis(chamber_config, rateTree, cutOffRate=0.0, debug=False, outf
             pass
 
         # print points in a table
-        print(tabulate(inflectTable, headers = ['Geo Addr', 'VFAT Number', 'ARM DAC Inflection Pt'], tablefmt='orgtbl') )
-        inflectTableFile = file("{0}/{1}/inflectionPointTable.txt".format(elogPath,chamber_config[ohKey],scandate), "w")
-        inflectTableFile.write(tabulate(inflectTable, headers = ['Geo Addr', 'VFAT Number', 'ARM DAC Inflection Pt'], tablefmt='orgtbl') )
+        if perchannel == False:
+            print(tabulate(inflectTable, headers = ['Geo Addr', 'VFAT Number', 'ARM DAC Inflection Pt'], tablefmt='orgtbl') )
+            inflectTableFile = file("{0}/{1}/inflectionPointTable.txt".format(elogPath,chamber_config[ohKey],scandate), "w")
+            inflectTableFile.write(tabulate(inflectTable, headers = ['Geo Addr', 'VFAT Number', 'ARM DAC Inflection Pt'], tablefmt='orgtbl') )
 
         # Make Graphs /////////////////////////////////////////////////////////////////////////////
         #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
