@@ -1244,6 +1244,7 @@ def sbitRateAnalysis(chamber_config, rateTree, cutOffRate=0.0, debug=False, outf
             pass
         pass
 
+
     # make nested dictionaries
     from gempython.utils.nesteddict import nesteddict as ndict
     dict_Rate1DVsDACNameX = ndict() #[dacName][ohKey][vfat] = TGraphErrors
@@ -1342,10 +1343,11 @@ def sbitRateAnalysis(chamber_config, rateTree, cutOffRate=0.0, debug=False, outf
 
     # make a named dictionary to store inflection pts
     dict_dacInflectPts = ndict()
-    inflectTable = []
 
     for entry in crateMap:
         ohKey = (entry['shelf'],entry['slot'],entry['link'])
+        # clear the inflection point table for each new link
+        inflectTable = []
         # Per VFAT Poosition
         for vfat in range(0,24):
             thisVFATDir = outputFiles[ohKey].mkdir("VFAT{0}".format(vfat))
@@ -1386,11 +1388,15 @@ def sbitRateAnalysis(chamber_config, rateTree, cutOffRate=0.0, debug=False, outf
                 pass
             pass
 
-        # print points in a table
+        # put inflection points in a table for each different ohKey 
         if perchannel == False:
             print(tabulate(inflectTable, headers = ['Geo Addr', 'VFAT Number', 'ARM DAC Inflection Pt'], tablefmt='orgtbl') )
-            inflectTableFile = file("{0}/{1}/inflectionPointTable.txt".format(elogPath,chamber_config[ohKey],scandate), "w")
-            inflectTableFile.write(tabulate(inflectTable, headers = ['Geo Addr', 'VFAT Number', 'ARM DAC Inflection Pt'], tablefmt='orgtbl') )
+            if scandate == 'noscandate':
+                inflectTableFile = file("{0}/{1}/inflectionPointTable.txt".format(elogPath,chamber_config[ohKey]), "w")
+                inflectTableFile.write(tabulate(inflectTable, headers = ['Geo Addr', 'VFAT Number', 'ARM DAC Inflection Pt'], tablefmt='orgtbl') )
+            else: 
+                inflectTableFile = file("{0}/{1}/inflectionPointTable.txt".format(strDirName,scandate ), "w")
+                inflectTableFile.write(tabulate(inflectTable, headers = ['Geo Addr', 'VFAT Number', 'ARM DAC Inflection Pt'], tablefmt='orgtbl') )
 
         # Make Graphs /////////////////////////////////////////////////////////////////////////////
         #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
