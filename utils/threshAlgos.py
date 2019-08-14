@@ -433,7 +433,6 @@ def anaUltraThreshold(args,thrFilename,GEBtype="short",outputDir=None,fileScurve
     # Do we return analyzed TTree?
     from multiprocessing import current_process
     if (current_process().name == 'MainProcess'):
-        return
         return thrAnaTree
     else:
         # multiprocessing cannot handle the thrAnaTree object to be passed back
