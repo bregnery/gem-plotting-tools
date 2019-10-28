@@ -487,6 +487,12 @@ def findInflectionPts(graph):
     x = np.array(x, dtype=float)
     y = np.array(y, dtype=float)
 
+    if len(x) == 0 or len(y) == 0:
+        printRed("No data points were passed to the inflection point finder")
+        printRed("This could be due to missing VFATs on the detector, please make sure you expect this")
+        printRed("Returning None")
+        return (np.array([None]), np.array([None]) ) 
+
     # Calculate the gradient of y as a function of x
     # Documentation here: https://docs.scipy.org/doc/numpy/reference/generated/numpy.gradient.html
     grad = np.gradient(y, x)
@@ -512,7 +518,6 @@ def findInflectionPts(graph):
         inflxGrad = negGrad[bigIdx][0]
         inflxIdx = np.where(grad == inflxGrad) #return the index at the specified value
         inflxPnt = (x[inflxIdx], y[inflxIdx] )
-        print "Inflection point: ", inflxPnt
     # Error handling for problematic VFATs
     except IndexError:
         if bigIdx == 0:
