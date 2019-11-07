@@ -1496,8 +1496,7 @@ def sbitRateAnalysis(chamber_config, rateTree, cutOffRate=0.0, debug=False, outf
                  # make nVFATs TLines
                 kneeLine= []
                 for vfat in range(0,nVFATS):
-                    canv_Summary1D.cd(vfat + 1).SetLogy()
-
+                    canv_Summary1D.cd(chamber_vfatPos2PadIdx[gemType][vfat] ).SetLogy() # get pad corresponding to vfat
 
                     # make sure the inflection point is there
                     if dict_dacInflectPts[dacName][ohKey][vfat][0] == None:
@@ -1512,16 +1511,11 @@ def sbitRateAnalysis(chamber_config, rateTree, cutOffRate=0.0, debug=False, outf
                     # make sure the yaxis range is restricted
                     graph.GetYaxis().SetRangeUser(1e-1,1e8)
 
-                    # get maximum y value
-                    y = graph.GetY()
-                    y = np.array(y)
-                    ymax = np.amax(y)
-
                     # Draw a line on the graphs
-                    kneeLine.append(r.TLine(dict_dacInflectPts[dacName][ohKey][vfat][0], 10.0, dict_dacInflectPts[dacName][ohKey][vfat][0], ymax) )
+                    kneeLine.append(r.TLine(dict_dacInflectPts[dacName][ohKey][vfat][0], 1e-1, dict_dacInflectPts[dacName][ohKey][vfat][0], 1e8) )
                     kneeLine[vfat].SetLineColor(2)
                     kneeLine[vfat].SetVertical()
-                    canv_Summary1D.cd(vfat+1 )
+                    canv_Summary1D.cd(chamber_vfatPos2PadIdx[gemType][vfat] )   
                     kneeLine[vfat].Draw()
                 canv_Summary1D.Update()
 
