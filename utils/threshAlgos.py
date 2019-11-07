@@ -1496,7 +1496,7 @@ def sbitRateAnalysis(chamber_config, rateTree, cutOffRate=0.0, debug=False, outf
                  # make nVFATs TLines
                 kneeLine= []
                 for vfat in range(0,nVFATS):
-                    canv_Summary1D.cd(chamber_vfatPos2PadIdx[gemType][vfat] ).SetLogy() # get pad corresponding to vfat
+                    canv_Summary1D.cd(chamber_vfatPos2PadIdx[gemType][vfat]).SetLogy()
 
                     # make sure the inflection point is there
                     if dict_dacInflectPts[dacName][ohKey][vfat][0] == None:
